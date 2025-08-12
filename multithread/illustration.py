@@ -5,7 +5,9 @@ from PIL import Image
 
 # versions = ["original", "noif", "norm", "noeigen"] 
 
-n_thread = [2, 4, 8, 16, 32]
+version = "cppthreadv4"
+# n_thread = [2, 4, 8, 16, 32]
+n_thread = [8, ] # only for v4
 
 def apply_mask(image, mask, mask_value, color, alpha=.5):
     for c in range(3):
@@ -14,9 +16,9 @@ def apply_mask(image, mask, mask_value, color, alpha=.5):
     return image
 
 for num in n_thread:
-    in_path = "E:/Research/experiment_results/efficient_glob_perm_rfn_unet/iiki2025/cppthreadv2/l8/0/{}/a=80.0, b=0.03125, r=3.0".format(num)  # Perm. RFN. UNet w/o 
+    in_path = "E:/Research/experiment_results/efficient_glob_perm_rfn_unet/iiki2025/{}/l8/0/{}/a=80.0, b=0.03125, r=3.0".format(version, num)  # Perm. RFN. UNet w/o 
     image_path = "E:/Research/experiment_data/l8/false/"
-    out_path = "visual/jpg/{}".format(num)
+    out_path = "visual/jpg/{}/{}".format(version, num)
 
     if not os.path.exists(out_path):
         os.makedirs(out_path)

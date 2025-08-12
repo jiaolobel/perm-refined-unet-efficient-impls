@@ -41,8 +41,9 @@ class Config:
             "cppthread",
             "cppthreadv2",
             "cppthreadv3", 
-        ][9]
-        self.n_thread = [2, 4, 8, 16, 32][4]
+            "cppthreadv4"
+        ][10]
+        self.n_thread = [2, 4, 8, 16, 32][2]
         self.branch = "iiki2025"
 
         # ==> Hyperparameters, v1

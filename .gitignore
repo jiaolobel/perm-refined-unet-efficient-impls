@@ -190,6 +190,8 @@ checkpoint
 *.jpg
 *.xlsx
 *.xls
+*.pptx
+*.ppt
 *.csv
 *.txt
 *.md
@@ -202,7 +204,6 @@ checkpoint
 
 
 试验/
-
 
 
 

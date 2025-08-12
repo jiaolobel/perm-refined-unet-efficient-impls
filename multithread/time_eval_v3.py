@@ -1,5 +1,5 @@
 """
-Time evaluation for SeqCompute (message-passing filter initialization, Q initialization, and pairwise potential computation in the iterations in the multi-thread way, bilateral / spatial message passing in the sequential way) 
+Time evaluation for MtCompute (all computations in multi-thread way except for feature generation, aka cppthreadv3)
 """
 
 import os
@@ -8,7 +8,8 @@ import numpy as np
 
 from scipy.stats import ttest_rel
 
-outname = "time.tex"
+in_pttn = "E:/Research/experiment_results/efficient_glob_perm_rfn_unet/iiki2025/cppthreadv3/l8/0/{}/a=80.0, b=0.03125, r=3.0"
+outname = "time_v3.tex"
 
 times_wrt_nThrd = {
     2: [], 
@@ -21,7 +22,7 @@ times_wrt_nThrd = {
 with open(outname, "w") as fwriter:
     lines = "version & time\\\\\n"
     for n_thread in times_wrt_nThrd.keys():
-        path = "E:/Research/experiment_results/efficient_glob_perm_rfn_unet/iiki2025/cppthreadv2/l8/0/{}/a=80.0, b=0.03125, r=3.0".format(n_thread)  # Perm. RFN. UNet w/o bilateral message-passing step
+        path = in_pttn.format(n_thread)  # Perm. RFN. UNet w/o bilateral message-passing step
         for i in range(10):
             fname = os.path.join(path, "log{:03}.csv".format(i + 1))
             dframe = pd.read_csv(fname)

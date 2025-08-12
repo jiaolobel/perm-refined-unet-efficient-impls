@@ -9,7 +9,8 @@ from PIL import Image
 #     os.makedirs(output_path)
 #     print("Create {}.".format(output_path))
 
-n_thread = [2, 4, 8, 16, 32]
+version = ["cppthreadv2", "cppthreadv3", "cppthreadv4"][2]
+n_thread = [8, ] # [2, 4, 8, 16, 32]
 
 CROP_HEIGHT = 512
 CROP_WIDTH = 512
@@ -36,8 +37,8 @@ def extract_patches(image, crop_height=CROP_HEIGHT, crop_width=CROP_WIDTH):
     return images, num_height, num_width
 
 for num in n_thread:
-    input_path = os.path.join("visual/jpg/{}".format(num))
-    output_path = os.path.join("visual/jpg/{}".format(num))
+    input_path = os.path.join("visual/jpg/{}/{}".format(version, num))
+    output_path = os.path.join("visual/jpg/{}/{}".format(version, num))
     fnames = os.listdir(input_path)
     for fname in fnames:
         if 'masked' in fname:
