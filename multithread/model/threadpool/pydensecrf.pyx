@@ -1,6 +1,6 @@
 # distutils: language = c++
 # cython: language_level = 3
-# distutils: sources = [densecrf.cpp, permutohedral.cpp]
+# distutils: sources = [densecrf.cpp, permutohedral.cpp, threadpool.cpp]
 
 cdef extern from "densecrf.h":
     cdef cppclass DenseCRF:

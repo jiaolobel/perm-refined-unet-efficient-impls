@@ -1,4 +1,6 @@
 """
+!!! Attention: The input and output paths should be checked carefully. 
+
 Experimental configuration.
 
 Experiments
@@ -7,7 +9,7 @@ Experiments
         0.2 version = "noif"
         0.3 version = "norm"
         0.4 version = "noeigen"
-    1. Hyperparameter test.
+    1. (Skipped) Hyperparameter test, with grid search.
         1.1 theta_beta = 0.03125 with theta_alpha = 120.0 (4), 80.0 (1), 40.0 (2), 10.0 (3).
         1.2 theta_alpha = 80.0 with theta_beta = 0.03125 (1), 0.0625 (2), 0.125 (3), 0.25 (4).
     2. Exploration of multi-spectral features.
@@ -29,7 +31,7 @@ class Config:
         """
         In and Out paths should be double-checked.
         """
-        # ==> for module name and output, CRITICAL
+        # ==> version codes for module name and output, CRITICAL
         self.version = [
             "original",
             "noif",
@@ -40,15 +42,16 @@ class Config:
             "multiprocessingv2",
             "cppthread",
             "cppthreadv2",
-            "cppthreadv3", 
-            "cppthreadv4"
-        ][10]
+            "cppthreadv3",
+            "cppthreadv4",
+            "threadpool",
+        ][11]
         self.n_thread = [2, 4, 8, 16, 32][2]
         self.branch = "iiki2025"
 
         # ==> Hyperparameters, v1
         # self.theta_alpha, self.theta_beta, self.theta_gamma = 80.0, 0.03125, 3.0 # critical hyperparameters
-        # ==> setting v2
+        # ==> setting v2, for grid search
         self.theta_alpha = [80.0, 40.0, 10.0, 120.0][
             0
         ]  # 80.0, 40.0, 10.0, 120.0 with default theta_alpha=0.03125
@@ -59,7 +62,7 @@ class Config:
 
         # ==> v1
         # self.img_channel_list, self.vis_channel_list = [4, 3, 2], None # bilateral features for CRF, RGB now
-        # ==> v2
+        # ==> setting v2
         self.channels = {
             "rgb": 0,
             "multispectral": 1,

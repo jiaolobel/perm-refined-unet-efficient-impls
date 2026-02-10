@@ -31,7 +31,10 @@
 // 2025.07.31 try multi-processing
 // 2025.08.06 try thread in cpp
 
+// 2026.02.09 try thread pool
+
 #include "permutohedral.h"
+#include "threadpool.h"
 
 class HashTable {
   protected:
@@ -111,7 +114,7 @@ class HashTable {
     const short *getKey(int i) const { return &keys_[i * key_size_]; }
 };
 
-Permutohedral::Permutohedral(int N, int d, int n_thread) {
+Permutohedral::Permutohedral(int N, int d, int n_thread, ThreadPool *pool) {
     N_ = N;
     d_ = d;
     n_thread_ = n_thread;
@@ -120,6 +123,8 @@ Permutohedral::Permutohedral(int N, int d, int n_thread) {
         n_thread_ = 1;
     }
     tN_ = N_ / n_thread_;
+
+    pool_ = pool;
 
     d1_ = d + 1;
 
@@ -402,17 +407,31 @@ void Permutohedral::tinit(const float *tfeature, int threadi, short *tkey) {
 void Permutohedral::mtinit(const float *feature) {
     short *key = new short[N_ * d1_ * d_];
 
-    std::vector<std::thread> threads;
-    auto call_tinit = [this](const float *tfeature, int threadi, short *tkey) { tinit(tfeature, threadi, tkey); };
+    // std::vector<std::thread> threads;
+    // auto call_tinit = [this](const float *tfeature, int threadi, short *tkey)
+    // {
+    //     tinit(tfeature, threadi, tkey);
+    // };
 
-    for (int i = 0; i < n_thread_; i++) {
-        const float *tfeature = feature + i * tN_ * d_;
-        short *tkey = key + i * tN_ * d1_ * d_;
-        threads.emplace_back(call_tinit, tfeature, i, tkey);
-    }
+    // for (int i = 0; i < n_thread_; i++) {
+    //     const float *tfeature = feature + i * tN_ * d_;
+    //     short *tkey = key + i * tN_ * d1_ * d_;
+    //     threads.emplace_back(call_tinit, tfeature, i, tkey);
+    // }
 
-    for (auto &t : threads) {
-        t.join();
+    // for (auto &t : threads) {
+    //     t.join();
+    // }
+
+    // ==> w/ thread pool
+    for (int threadi = 0; threadi < n_thread_; threadi++) {
+        auto call_tinit = [this, feature, key, threadi] {
+            const float *tfeature = feature + threadi * tN_ * d_;
+            short *tkey = key + threadi * tN_ * d1_ * d_;
+            tinit(tfeature, threadi, tkey);
+        };
+
+        pool_->enqueue(call_tinit);
     }
 
     HashTable table(d_, N_ * d1_);
@@ -529,29 +548,51 @@ void Permutohedral::mtcompute(const float *inp, const int value_size,
     float *tvalues = new float[n_thread_ * (M_ + 2) * value_size];
     fill(tvalues, tvalues + n_thread_ * (M_ + 2) * value_size, 0.f);
 
-    auto tsplat = [this, inp, value_size, tvalues](int threadi) {
-        const float *tinp = inp + threadi * tN_ * value_size;
-        float *tvalue = tvalues + threadi * (M_ + 2) * value_size;
-        int *tos = os_ + threadi * tN_ * d1_;
-        float *tws = ws_ + threadi * tN_ * d1_;
-        for (int i = 0; i < tN_; i++) {
-            for (int j = 0; j < d1_; j++) {
-                int o = tos[i * d1_ + j];
-                float w = tws[i * d1_ + j];
+    // auto tsplat = [this, inp, value_size, tvalues](int threadi) {
+    //     const float *tinp = inp + threadi * tN_ * value_size;
+    //     float *tvalue = tvalues + threadi * (M_ + 2) * value_size;
+    //     int *tos = os_ + threadi * tN_ * d1_;
+    //     float *tws = ws_ + threadi * tN_ * d1_;
+    //     for (int i = 0; i < tN_; i++) {
+    //         for (int j = 0; j < d1_; j++) {
+    //             int o = tos[i * d1_ + j];
+    //             float w = tws[i * d1_ + j];
 
-                for (int v = 0; v < value_size; v++) {
-                    tvalue[o * value_size + v] += w * tinp[i * value_size + v];
+    //             for (int v = 0; v < value_size; v++) {
+    //                 tvalue[o * value_size + v] += w * tinp[i * value_size +
+    //                 v];
+    //             }
+    //         }
+    //     }
+    // };
+
+    // std::vector<std::thread> splatThreads;
+    // for (int i = 0; i < n_thread_; i++) {
+    //     splatThreads.emplace_back(tsplat, i);
+    // }
+    // for (auto &t : splatThreads) {
+    //     t.join();
+    // }
+
+    for (int threadi = 0; threadi < n_thread_; threadi++) {
+        auto tsplat = [this, inp, value_size, tvalues, threadi] {
+            const float *tinp = inp + threadi * tN_ * value_size;
+            float *tvalue = tvalues + threadi * (M_ + 2) * value_size;
+            int *tos = os_ + threadi * tN_ * d1_;
+            float *tws = ws_ + threadi * tN_ * d1_;
+            for (int i = 0; i < tN_; i++) {
+                for (int j = 0; j < d1_; j++) {
+                    int o = tos[i * d1_ + j];
+                    float w = tws[i * d1_ + j];
+
+                    for (int v = 0; v < value_size; v++) {
+                        tvalue[o * value_size + v] +=
+                            w * tinp[i * value_size + v];
+                    }
                 }
             }
-        }
-    };
-
-    std::vector<std::thread> splatThreads;
-    for (int i = 0; i < n_thread_; i++) {
-        splatThreads.emplace_back(tsplat, i);
-    }
-    for (auto &t : splatThreads) {
-        t.join();
+        };
+        pool_->enqueue(tsplat);
     }
 
     // Reduce
@@ -588,30 +629,51 @@ void Permutohedral::mtcompute(const float *inp, const int value_size,
     // Seq slicing
     fill(out, out + N_ * value_size, 0);
 
-    // Multi-thread splicing
-    auto tslice = [this, out, value_size, value](int threadi) {
-        float *tout = out + threadi * tN_ * value_size;
-        int *tos = os_ + threadi * tN_ * d1_;
-        float *tws = ws_ + threadi * tN_ * d1_;
+    // // Multi-thread splicing
+    // auto tslice = [this, out, value_size, value](int threadi) {
+    //     float *tout = out + threadi * tN_ * value_size;
+    //     int *tos = os_ + threadi * tN_ * d1_;
+    //     float *tws = ws_ + threadi * tN_ * d1_;
 
-        for (int i = 0; i < tN_; i++) {
-            for (int j = 0; j < d1_; j++) {
-                int o = tos[i * d1_ + j];
-                float w = tws[i * d1_ + j];
-                for (int v = 0; v < value_size; v++) {
-                    tout[i * value_size + v] +=
-                        w * value[o * value_size + v] * alpha_;
+    //     for (int i = 0; i < tN_; i++) {
+    //         for (int j = 0; j < d1_; j++) {
+    //             int o = tos[i * d1_ + j];
+    //             float w = tws[i * d1_ + j];
+    //             for (int v = 0; v < value_size; v++) {
+    //                 tout[i * value_size + v] +=
+    //                     w * value[o * value_size + v] * alpha_;
+    //             }
+    //         }
+    //     }
+    // };
+
+    // std::vector<std::thread> sliceThreads;
+    // for (int i = 0; i < n_thread_; i++) {
+    //     sliceThreads.emplace_back(tslice, i);
+    // }
+    // for (auto &t : sliceThreads) {
+    //     t.join();
+    // }
+
+    for (int threadi = 0; threadi < n_thread_; threadi++) {
+        auto tslice = [this, out, value_size, value, threadi] {
+            float *tout = out + threadi * tN_ * value_size;
+            int *tos = os_ + threadi * tN_ * d1_;
+            float *tws = ws_ + threadi * tN_ * d1_;
+
+            for (int i = 0; i < tN_; i++) {
+                for (int j = 0; j < d1_; j++) {
+                    int o = tos[i * d1_ + j];
+                    float w = tws[i * d1_ + j];
+                    for (int v = 0; v < value_size; v++) {
+                        tout[i * value_size + v] +=
+                            w * value[o * value_size + v] * alpha_;
+                    }
                 }
             }
-        }
-    };
+        };
 
-    std::vector<std::thread> sliceThreads;
-    for (int i = 0; i < n_thread_; i++) {
-        sliceThreads.emplace_back(tslice, i);
-    }
-    for (auto &t : sliceThreads) {
-        t.join();
+        pool_->enqueue(tslice);
     }
 
     delete[] value;

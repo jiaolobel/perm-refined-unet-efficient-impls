@@ -8,6 +8,8 @@
 
 #include <thread>
 
+#include "threadpool.h"
+
 using namespace std;
 
 class Permutohedral {
@@ -23,8 +25,10 @@ class Permutohedral {
 
     int *blur_neighbors_ = NULL;
 
+    ThreadPool *pool_ = NULL;
+
   public:
-    Permutohedral(int N, int d, int n_thread);
+    Permutohedral(int N, int d, int n_thread, ThreadPool *pool);
     void seqinit(const float *feature);
     void tinit(const float *tfeature, int threadi, short *tkey);
     void mtinit(const float *feature);

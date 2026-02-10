@@ -14,7 +14,8 @@
         "sources": [
             "pydensecrf.pyx",
             "densecrf.cpp",
-            "permutohedral.cpp"
+            "permutohedral.cpp",
+            "threadpool.cpp"
         ]
     },
     "module_name": "pydensecrf"
@@ -21099,7 +21100,7 @@ if (!__Pyx_RefNanny) {
   /* "pydensecrf.pyx":1
  * # distutils: language = c++             # <<<<<<<<<<<<<<
  * # cython: language_level = 3
- * # distutils: sources = [densecrf.cpp, permutohedral.cpp]
+ * # distutils: sources = [densecrf.cpp, permutohedral.cpp, threadpool.cpp]
  */
   __pyx_t_7 = __Pyx_PyDict_NewPresized(0); if (unlikely(!__pyx_t_7)) __PYX_ERR(1, 1, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_7);

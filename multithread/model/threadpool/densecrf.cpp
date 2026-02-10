@@ -29,12 +29,12 @@ DenseCRF::DenseCRF(int H, int W, int n_classes, int d_bifeats, int d_spfeats,
     }
     tN_ = N_ / n_thread_;
 
-    bilateral_lattice_ = new Permutohedral(N_, d_bifeats_, n_thread_);
-    spatial_lattice_ = new Permutohedral(N_, d_spfeats, n_thread_);
+    pool_ = new ThreadPool(n_thread_);
+
+    bilateral_lattice_ = new Permutohedral(N_, d_bifeats_, n_thread_, pool_);
+    spatial_lattice_ = new Permutohedral(N_, d_spfeats, n_thread_, pool_);
 
     // Potts model // potts_compatibility(compatibility_matrix_);
-
-    pool_ = new ThreadPool(n_thread_);
 }
 
 DenseCRF::~DenseCRF() {
@@ -215,37 +215,66 @@ void DenseCRF::mtinference(const float *unary, const float *reference,
     //     }
     // }
 
-    // == mt create feature ==
-    auto mtcreate_feature = [this, bilateral_feats, reference,
-                             spatial_feats](int threadi) {
-        int tH = H_ / n_thread_;
-        int ystart = threadi * tH;
-        int yend = threadi * tH + tH;
-        for (int y = ystart; y < yend; y++) {
-            for (int x = 0; x < W_; x++) {
-                int coord = y * W_ * d_bifeats_ + x * d_bifeats_;
-                int refcoord = y * W_ * (d_bifeats_ - d_spfeats_) +
-                               x * (d_bifeats_ - d_spfeats_);
-                bilateral_feats[coord + 0] = (float)x / theta_alpha_;
-                bilateral_feats[coord + 1] = (float)y / theta_alpha_;
-                for (int d = d_spfeats_; d < d_bifeats_; d++) {
-                    bilateral_feats[coord + d] =
-                        reference[refcoord + (d - d_spfeats_)] / theta_beta_;
+    // // // == mt create feature ==
+    // // // ==> w/ thread pool
+    // auto mtcreate_feature = [this, bilateral_feats, reference,
+    //                          spatial_feats](int threadi) {
+    //     int tH = H_ / n_thread_;
+    //     int ystart = threadi * tH;
+    //     int yend = threadi * tH + tH;
+    //     for (int y = ystart; y < yend; y++) {
+    //         for (int x = 0; x < W_; x++) {
+    //             int coord = y * W_ * d_bifeats_ + x * d_bifeats_;
+    //             int refcoord = y * W_ * (d_bifeats_ - d_spfeats_) +
+    //                            x * (d_bifeats_ - d_spfeats_);
+    //             bilateral_feats[coord + 0] = (float)x / theta_alpha_;
+    //             bilateral_feats[coord + 1] = (float)y / theta_alpha_;
+    //             for (int d = d_spfeats_; d < d_bifeats_; d++) {
+    //                 bilateral_feats[coord + d] =
+    //                     reference[refcoord + (d - d_spfeats_)] / theta_beta_;
+    //             }
+
+    //             coord = y * W_ * d_spfeats_ + x * d_spfeats_;
+    //             spatial_feats[coord + 0] = (float)x / theta_gamma_;
+    //             spatial_feats[coord + 1] = (float)y / theta_gamma_;
+    //         }
+    //     }
+    // };
+
+    // ==> w/ thread pool
+    // std::vector<std::thread> ftThreads;
+    // for (int i = 0; i < n_thread_; i++) {
+    //     ftThreads.emplace_back(mtcreate_feature, i);
+    // }
+    // for (auto &t : ftThreads) {
+    //     t.join();
+    // }
+    for (int threadi = 0; threadi < n_thread_; threadi++) {
+        auto mtcreate_feature = [this, bilateral_feats, reference,
+                                 spatial_feats, threadi] {
+            int tH = H_ / n_thread_;
+            int ystart = threadi * tH;
+            int yend = threadi * tH + tH;
+            for (int y = ystart; y < yend; y++) {
+                for (int x = 0; x < W_; x++) {
+                    int coord = y * W_ * d_bifeats_ + x * d_bifeats_;
+                    int refcoord = y * W_ * (d_bifeats_ - d_spfeats_) +
+                                   x * (d_bifeats_ - d_spfeats_);
+                    bilateral_feats[coord + 0] = (float)x / theta_alpha_;
+                    bilateral_feats[coord + 1] = (float)y / theta_alpha_;
+                    for (int d = d_spfeats_; d < d_bifeats_; d++) {
+                        bilateral_feats[coord + d] =
+                            reference[refcoord + (d - d_spfeats_)] /
+                            theta_beta_;
+                    }
+
+                    coord = y * W_ * d_spfeats_ + x * d_spfeats_;
+                    spatial_feats[coord + 0] = (float)x / theta_gamma_;
+                    spatial_feats[coord + 1] = (float)y / theta_gamma_;
                 }
-
-                coord = y * W_ * d_spfeats_ + x * d_spfeats_;
-                spatial_feats[coord + 0] = (float)x / theta_gamma_;
-                spatial_feats[coord + 1] = (float)y / theta_gamma_;
             }
-        }
-    };
-
-    std::vector<std::thread> ftThreads;
-    for (int i = 0; i < n_thread_; i++) {
-        ftThreads.emplace_back(mtcreate_feature, i);
-    }
-    for (auto &t : ftThreads) {
-        t.join();
+        };
+        pool_->enqueue(mtcreate_feature);
     }
 
     // Initialize bilateral and spatial filters
@@ -269,22 +298,35 @@ void DenseCRF::mtinference(const float *unary, const float *reference,
     // Initialize Q
     float *Q = out;
 
-    // == multi-thread init ==
-    auto tinitQ = [this](const float *tunary, float *tQ) {
-        for (int i = 0; i < tN_ * n_classes_; i++) {
-            tQ[i] = -tunary[i];
-        }
-        tsoftmax(tQ, tQ);
-    };
+    // // == multi-thread init ==
+    // auto tinitQ = [this](const float *tunary, float *tQ) {
+    //     for (int i = 0; i < tN_ * n_classes_; i++) {
+    //         tQ[i] = -tunary[i];
+    //     }
+    //     tsoftmax(tQ, tQ);
+    // };
 
-    std::vector<std::thread> initQThreads;
-    for (int i = 0; i < n_thread_; i++) {
-        const float *tunary = unary + i * tN_ * n_classes_;
-        float *tQ = Q + i * tN_ * n_classes_;
-        initQThreads.emplace_back(tinitQ, tunary, tQ);
-    }
-    for (auto &t : initQThreads) {
-        t.join();
+    // std::vector<std::thread> initQThreads;
+    // for (int i = 0; i < n_thread_; i++) {
+    //     const float *tunary = unary + i * tN_ * n_classes_;
+    //     float *tQ = Q + i * tN_ * n_classes_;
+    //     initQThreads.emplace_back(tinitQ, tunary, tQ);
+    // }
+    // for (auto &t : initQThreads) {
+    //     t.join();
+    // }
+
+    // ==> w/ thread pool
+    for (int threadi = 0; threadi < n_thread_; threadi++) {
+        auto tinitQ = [this, unary, Q, threadi] {
+            const float *tunary = unary + threadi * tN_ * n_classes_;
+            float *tQ = Q + threadi * tN_ * n_classes_;
+            for (int i = 0; i < tN_ * n_classes_; i++) {
+                tQ[i] = -tunary[i];
+            }
+            tsoftmax(tQ, tQ);
+        };
+        pool_->enqueue(tinitQ);
     }
 
     float *bilateral_out = new float[N_ * n_classes_],
@@ -299,49 +341,90 @@ void DenseCRF::mtinference(const float *unary, const float *reference,
         // Spatial message passing
         spatial_lattice_->mtcompute(Q, n_classes_, false, spatial_out);
 
-        // == Multi-thread dim-wise normalization ==
-        auto tnormDim = [this](const float *tbilateral_out,
-                              const float *tspatial_out,
-                              const float *tbilateral_norm_vals,
-                              const float *tspatial_norm_vals,
-                              const float *tunary, float *tQ) {
-            for (int i = 0; i < tN_; i++) {
-                for (int j = 0; j < n_classes_; j++) {
-                    int idx = i * n_classes_ + j;
-                    float norm_bilateral_out =
-                        tbilateral_out[idx] / tbilateral_norm_vals[i];
-                    float norm_spatial_out =
-                        tspatial_out[idx] / tspatial_norm_vals[i];
+        // // == Multi-thread dim-wise normalization ==
+        // auto tnormDim = [this](const float *tbilateral_out,
+        //                        const float *tspatial_out,
+        //                        const float *tbilateral_norm_vals,
+        //                        const float *tspatial_norm_vals,
+        //                        const float *tunary, float *tQ) {
+        //     for (int i = 0; i < tN_; i++) {
+        //         for (int j = 0; j < n_classes_; j++) {
+        //             int idx = i * n_classes_ + j;
+        //             float norm_bilateral_out =
+        //                 tbilateral_out[idx] / tbilateral_norm_vals[i];
+        //             float norm_spatial_out =
+        //                 tspatial_out[idx] / tspatial_norm_vals[i];
 
-                    // Normalization and Message passing
-                    float message_passing =
-                        bilateral_compat_ * norm_bilateral_out +
-                        spatial_compat_ * norm_spatial_out;
+        //             // Normalization and Message passing
+        //             float message_passing =
+        //                 bilateral_compat_ * norm_bilateral_out +
+        //                 spatial_compat_ * norm_spatial_out;
 
-                    // Compatibility transformation
-                    float pairwise = compatibility_ * message_passing;
+        //             // Compatibility transformation
+        //             float pairwise = compatibility_ * message_passing;
 
-                    // Local update
-                    tQ[idx] = -tunary[idx] - pairwise;
+        //             // Local update
+        //             tQ[idx] = -tunary[idx] - pairwise;
+        //         }
+        //     }
+        //     tsoftmax(tQ, tQ);
+        // };
+
+        // std::vector<std::thread> normThreads;
+        // for (int i = 0; i < n_thread_; i++) {
+        //     const float *tbilateral_out = bilateral_out + i * tN_ *
+        //     n_classes_; const float *tspatial_out = spatial_out + i * tN_ *
+        //     n_classes_; const float *tbilateral_norm_vals =
+        //     bilateral_norm_vals + i * tN_; const float *tspatial_norm_vals =
+        //     spatial_norm_vals + i * tN_; const float *tunary = unary + i *
+        //     tN_ * n_classes_; float *tQ = Q + i * tN_ * n_classes_;
+        //     normThreads.emplace_back(tnormDim, tbilateral_out, tspatial_out,
+        //                              tbilateral_norm_vals,
+        //                              tspatial_norm_vals, tunary, tQ);
+        // }
+        // for (auto &t : normThreads) {
+        //     t.join();
+        // }
+
+        // ==> w/ thread pool
+        for (int threadi = 0; threadi < n_thread_; threadi++) {
+            auto tnormDim = [this, bilateral_out, spatial_out,
+                             bilateral_norm_vals, spatial_norm_vals, unary, Q,
+                             threadi] {
+                const float *tbilateral_out =
+                    bilateral_out + threadi * tN_ * n_classes_;
+                const float *tspatial_out =
+                    spatial_out + threadi * tN_ * n_classes_;
+                const float *tbilateral_norm_vals =
+                    bilateral_norm_vals + threadi * tN_;
+                const float *tspatial_norm_vals =
+                    spatial_norm_vals + threadi * tN_;
+                const float *tunary = unary + threadi * tN_ * n_classes_;
+                float *tQ = Q + threadi * tN_ * n_classes_;
+                for (int i = 0; i < tN_; i++) {
+                    for (int j = 0; j < n_classes_; j++) {
+                        int idx = i * n_classes_ + j;
+                        float norm_bilateral_out =
+                            tbilateral_out[idx] / tbilateral_norm_vals[i];
+                        float norm_spatial_out =
+                            tspatial_out[idx] / tspatial_norm_vals[i];
+
+                        // Normalization and Message passing
+                        float message_passing =
+                            bilateral_compat_ * norm_bilateral_out +
+                            spatial_compat_ * norm_spatial_out;
+
+                        // Compatibility transformation
+                        float pairwise = compatibility_ * message_passing;
+
+                        // Local update
+                        tQ[idx] = -tunary[idx] - pairwise;
+                    }
                 }
-            }
-            tsoftmax(tQ, tQ);
-        };
+                tsoftmax(tQ, tQ);
+            };
 
-        std::vector<std::thread> normThreads;
-        for (int i = 0; i < n_thread_; i++) {
-            const float *tbilateral_out = bilateral_out + i * tN_ * n_classes_;
-            const float *tspatial_out = spatial_out + i * tN_ * n_classes_;
-            const float *tbilateral_norm_vals = bilateral_norm_vals + i * tN_;
-            const float *tspatial_norm_vals = spatial_norm_vals + i * tN_;
-            const float *tunary = unary + i * tN_ * n_classes_;
-            float *tQ = Q + i * tN_ * n_classes_;
-            normThreads.emplace_back(tnormDim, tbilateral_out, tspatial_out,
-                                     tbilateral_norm_vals, tspatial_norm_vals,
-                                     tunary, tQ);
-        }
-        for (auto &t : normThreads) {
-            t.join();
+            pool_->enqueue(tnormDim);
         }
     }
 
